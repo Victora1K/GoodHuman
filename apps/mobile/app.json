@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "GoodHuman",
+    "slug": "goodhuman",
+    "scheme": "goodhuman",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "io.goodhuman.app"
+    },
+    "android": {
+      "package": "io.goodhuman.app"
+    },
+    "plugins": ["expo-router"]
+  }
+}

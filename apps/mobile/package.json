@@ -1,0 +1,18 @@
+{
+  "name": "@goodhuman/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node -e \"console.log('Use: npx create-expo-app and copy app/ — skeleton sources are in apps/mobile/app')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node -e \"console.log('mobile: skeleton only in Phase 1')\"",
+    "build": "node -e \"console.log('mobile: use EAS for native builds')\""
+  },
+  "dependencies": {
+    "@goodhuman/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
