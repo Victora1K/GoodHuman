@@ -1,0 +1,131 @@
+
+Provider is behind one interface, `DocumentAssistant`. The rest of the app does not call a vendor SDK directly.
+---
+## 13. Media, watermark, social
+- Accept JPEG, PNG, WEBP, MP4, and MP3. Max image 20 MB, video 200 MB, audio 30 MB.
+- Store originals in a private bucket. Clients receive short-lived signed URLs.
+- Generate a preview image for photos and video posters. Watermark when the rule in section 7 says so. Do this in a background job, not in the request.
+- Videos are not re-encoded with a burned-in mark in version one. A poster image is watermarked and playback of preview-only video uses a visible overlay. State that limitation in the UI.
+- Social connect, phase 5: OAuth where the provider allows a public profile read. On success, store URL, display name, and avatar only if the artist confirms the import. Do not post, like, or message on their behalf. Do not request publish permissions.
+- If a provider denies the app, the manual URL field still works. Profile completeness treats a manual URL as done.
+---
+## 14. Architecture
+Monorepo.
+- `apps/web` — Next.js. Marketing and the full product.
+- `apps/mobile` — Expo (React Native) for iOS and Android.
+- `apps/api` — Node.js HTTP API, OpenAPI, stateless.
+- `packages/shared` — Zod schemas for quote, review result, and API types. Both clients import these.
+**Data:** PostgreSQL. Migrations checked in. Redis for the job queue, rate limits, and chat fanout.
+**Object storage:** S3-compatible, private by default, CDN in front of public preview images only.
+**Payments:** Stripe Connect so each artist has a connected account. Charges are created on the platform. Payouts go to the connected account after the release rule. Stripe Billing for web Premium. Apple StoreKit and Google Play Billing for mobile Premium. Webhook handlers are idempotent.
+**Chat:** Polling or a websocket on the API is enough for version one. Deliver messages via the API and store them in Postgres. Do not add a second chat vendor unless message latency is a measured problem.
+**Jobs:** watermark, social sync, balance charge scheduler, payout release, quote expiration. Workers can be a process beside the API.
+**Search:** PostgreSQL is enough. Index category, country, city, travel scope, and a simple geo point. No separate search cluster in version one.
+**Config:** fees, premium price, caps, deposit default, payout delay, and file limits live in one config module and environment variables. No magic numbers in UI components.
+**Environments:** local, preview, production. Production secrets are not in the repo.
+**Deploy target:** container for the API and worker, managed Postgres and Redis, object storage, web host that supports Next.js. Mobile builds through EAS or an equivalent CI. One pipeline runs lint, typecheck, unit tests, and migration check.
+This satisfies "quick deployment and scaling" as an engineering requirement: stateless API, background media work, managed data services, and a single OpenAPI contract. It also satisfies the artist-facing requirement: a profile can go live in one sitting.
+---
+## 15. Non-functional requirements
+- Search and profile pages respond in under 500 ms at the server for a warm cache, excluding media bytes.
+- Payment webhook processing is idempotent and safe to retry.
+- Authorized users can read only their inquiries, bookings, messages, and private media.
+- Public profiles expose no email, phone, exact home address, or original file key.
+- Rate-limit auth, inquiry creation, chat send, and AI routes.
+- Timezones are stored on the event. Never store a bare local time.
+- Dates in the UI use the event timezone and also show the viewer's local zone when they differ.
+- Accessibility: form labels, contrast, keyboard use on web, captions not required on user videos in version one.
+- Audit fields on quote acceptance, deal-sheet acceptance, payment status changes, and checklist checks: user id, timestamp, IP.
+### Scale assumption for the first production layout
+Design for 10,000 artist profiles, 100,000 inquiries, and short chat threads. Do not build microservices, sharding, or a custom CDN. Do keep the API stateless so a second instance is a config change.
+---
+## 16. Compliance boundaries
+- **Not a law firm.** Copy, onboarding, deal sheet, and review screen say so. No badge that implies certification.
+- **Privacy policy and terms** exist before public signup. They cover profile data, messages, contracts, files, and payment data processed by Stripe.
+- **18+** at signup.
+- **Cards** never touch application servers.
+- **Payout identity** is Stripe's hosted onboarding.
+- **Tax forms and international payouts** are out of scope. Artists whose country Stripe cannot pay see a clear block when connecting payouts.
+- **User content:** report button on profile, message, and media. Admin can hide a profile or asset.
+- **Retention:** incidents and deal sheets live for the life of the booking plus 7 years as business records. Chat follows the same. Doc-review model logs: 90 days.
+- **Recording clause** is a default the artist can edit, not a guarantee the other party will obey it.
+---
+## 17. Analytics
+Track only these events at first: sign-up by role, profile published, inquiry sent, quote sent, quote accepted, deposit succeeded, deal sheet accepted by both, change order accepted, checklist completed, incident opened, premium started, premium canceled.
+The daily artist home should be explainable from these events: next booking, items waiting on the artist, money that is pending or paused.
+---
+## 18. Acceptance checks
+### Phase 1
+- Artist signs up and publishes with city, category, one image, travel flag, and an open date.
+- Booker searches that city and category and opens the profile.
+- Booker sends an inquiry. Artist sees it and replies in the thread.
+- Booker cannot see the artist's email.
+- Uploaded image's public URL is a preview. The original URL is not public.
+### Phase 2
+- Artist without a payout account cannot send a payable quote and sees why.
+- Quote missing travel mode or scope is rejected by the API.
+- Booker acceptance charges a deposit in Stripe test mode.
+- Failed card does not create a booking.
+- Webhook replay does not double-charge or double-book.
+- Calendar shows the hold for both users.
+- Premium flag changes the booking fee used on the next quote.
+### Phase 3
+- Deal sheet contains only figures from the quote.
+- Removing the fee from the quote data and regenerating does not let the model keep the old fee.
+- Booker acceptance of the sheet is stored separately from artist acceptance.
+- Change order with a positive price stays `proposed` until paid.
+- Chat message "can you also play the afterparty" does not alter `included_scope`.
+- Review of a blank file returns an extraction error, not 15 rows of `missing` invented from nothing. A short real contract missing travel returns `missing` for travel.
+### Phase 4
+- Event-day checklist can be completed by each role only for their own checks.
+- Open incident sets payout to `paused`.
+- Resolving it allows the payout job to release after the delay.
+- Spotlight appears on the home featured row with a visible "Spotlight" label and does not change search order.
+- Mobile premium purchase sets the same `premium` flag as web.
+### Phase 5
+- YouTube or Spotify connect fills a social link after the artist confirms.
+- A pasted Instagram URL displays without OAuth.
+- Disconnect removes the imported display fields.
+---
+## 19. Suggested stack pins
+Use these unless the implementer has a repo-local reason to differ. Write the reason in the README.
+- TypeScript everywhere
+- Next.js (App Router) for `apps/web`
+- Expo for `apps/mobile`
+- NestJS or Hono for `apps/api` (pick one and stay with it)
+- PostgreSQL + Prisma
+- Zod in `packages/shared`
+- Stripe
+- S3-compatible storage
+- Redis + a simple queue (BullMQ if Redis)
+- One OpenAPI document published from the API
+UI: a small component set, responsive, fast to ship. Visual direction is calm and direct: off-white background, near-black text, one accent color. The product should feel like a working tool for artists, not a nightlife flyer and not a generic SaaS template with purple gradients. Act name and next booking are the loudest elements on the artist home screen.
+---
+## 20. First instruction to the coding model
+Implement Phase 1 and the repo skeleton for later phases. Create the monorepo, auth, roles, artist profile, public search and profile, travel flag, availability, inquiry chat, and private media with watermarked previews. Include PostgreSQL migrations, seed data for one artist and one booker, and tests for: contact privacy, travel flag required, and preview vs original URL.
+Do not implement payments, AI, checklists, or social OAuth until Phase 1 acceptance checks pass. Leave the database tables for Quote, Booking, DealSheet, and Payment in migrations so later phases do not reshape identity, but do not expose their UI yet.
+When Phase 1 passes, continue in order through Phase 5 using the acceptance checks in section 18 as the definition of done.
+---
+## 21. Decisions already made in this draft
+The founder notes left these open. This draft chooses them so a model does not stall. Change the choice here before prompting a model if you disagree.
+| Topic | Choice |
+| --- | --- |
+| Booker pricing | Free to join and inquire. They pay the gig. |
+| Artist pricing | Free tier plus Premium at $29/month, config-driven. |
+| Booking fee | 8% Free, 4% Premium, shown before accept. |
+| Deposit | Default 50%, artist chooses 25, 50, or 100 on the quote. |
+| Payout timing | 24 hours after event end, paused if an incident is open. |
+| Venue | A booker subtype plus an address, not a separate product. |
+| Watermark | Preview images and unsigned PDFs. |
+| AI | Clause checklist and quote-locked deal sheet. Not a lawyer. |
+| Geography | United States, USD, English first. Travel flag can say international, payouts cannot until Stripe supports the artist. |
+| Social | Manual links first-class. OAuth for YouTube and Spotify in Phase 5. |
+| Legal entity copy | Product name GoodHuman, domain GoodHuman.IO. |
+---
+## 22. Source notes from the founder
+- Audience: artists and up-and-coming artists.
+- Problems: self-managed contracts, discovery on social platforms, artist-led negotiation, travel and reimbursement, scope creep and extra criteria, unforeseen incidents.
+- Surfaces: Android, iOS, and web.
+- Use and payment: artists use it daily and pay monthly. Other parties: event planners, promoters, venues.
+- Feature list provided: fast deployment and scaling, social APIs, AI legal document drafting, chat and calendar, download and upload gallery, Spotlight, payments and deposit, watermark, premium tier, open-to-travel flag (local scope, national, or international), quick document review, arrival checklists.
+- Named competitor: Gigsalad.
