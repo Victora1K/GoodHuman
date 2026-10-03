@@ -46,13 +46,14 @@ export default function InquiryThreadPage() {
     e.preventDefault();
     const token = getToken();
     if (!token) return;
-    const fd = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
     try {
       await api(`/inquiries/${params.id}/messages`, {
         token,
         body: { body: String(fd.get("body")) },
       });
-      e.currentTarget.reset();
+      form.reset();
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Send failed");
