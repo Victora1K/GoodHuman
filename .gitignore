@@ -7,10 +7,11 @@ dist
 *.log
 coverage
 .DS_Store
-apps/api/storage
-apps/api/storage-test
-storage
-storage-test
+# Runtime object-storage directories (not source under apps/api/src/storage)
+/storage/
+/storage-test/
+/apps/api/storage/
+/apps/api/storage-test/
 apps/api/prisma/*.db
 apps/api/.env
 *.tsbuildinfo
