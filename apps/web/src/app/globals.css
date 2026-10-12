@@ -90,6 +90,23 @@ p {
   font-size: 0.95rem;
 }
 
+.nav-user {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.nav-logout {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.nav-logout:hover {
+  color: var(--ink);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

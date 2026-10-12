@@ -3,7 +3,7 @@
 import { FormEvent, useState, startTransition } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { setToken } from "@/lib/auth";
+import { setSession, type AuthUser } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,13 +14,13 @@ export default function LoginPage() {
     setError(null);
     const fd = new FormData(e.currentTarget);
     try {
-      const res = await api<{ token: string; user: { role: string } }>("/auth/login", {
+      const res = await api<{ token: string; user: AuthUser }>("/auth/login", {
         body: {
           email: String(fd.get("email")),
           password: String(fd.get("password")),
         },
       });
-      setToken(res.token);
+      setSession(res.token, res.user);
       startTransition(() => {
         router.push(res.user.role === "ARTIST" ? "/artist" : "/search");
       });
