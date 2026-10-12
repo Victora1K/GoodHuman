@@ -1,0 +1,373 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ARTIST
+  BOOKER
+  ADMIN
+}
+
+enum BookerSubtype {
+  INDIVIDUAL
+  VENUE
+  PROMOTER
+  PLANNER
+}
+
+enum ArtistCategory {
+  DJ
+  BAND
+  SOLO_MUSICIAN
+  COMEDIAN
+  DANCER
+  SPEAKER
+  OTHER
+}
+
+enum TravelScope {
+  LOCAL
+  NATIONAL
+  INTERNATIONAL
+}
+
+enum TravelMode {
+  ARTIST_TRAVELS
+  BOOKER_COVERS
+  NO_TRAVEL
+}
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+  AUDIO
+}
+
+enum MediaStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+  HIDDEN
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  YOUTUBE
+  SPOTIFY
+  TIKTOK
+  WEBSITE
+  OTHER
+}
+
+enum InquiryStatus {
+  OPEN
+  QUOTED
+  CLOSED
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  EXPIRED
+  REJECTED
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  REQUIRES_PAYMENT
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum PayoutStatus {
+  PENDING
+  PAUSED
+  RELEASED
+  FAILED
+}
+
+enum DealSheetStatus {
+  DRAFT
+  ARTIST_ACCEPTED
+  BOOKER_ACCEPTED
+  BOTH_ACCEPTED
+}
+
+model User {
+  id               String         @id @default(uuid()) @db.Uuid
+  email            String         @unique
+  passwordHash     String
+  role             UserRole
+  displayName      String
+  premium          Boolean        @default(false)
+  ageConfirmedAt   DateTime
+  bookerSubtype    BookerSubtype?
+  venueAddress     String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  artistProfile    ArtistProfile?
+  inquiries        Inquiry[]      @relation("BookerInquiries")
+  messages         Message[]
+  mediaAssets      MediaAsset[]
+  reportsFiled     Report[]       @relation("Reporter")
+  auditEvents      AuditEvent[]
+  quotesCreated    Quote[]        @relation("QuoteArtist")
+}
+
+model ArtistProfile {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       String         @unique @db.Uuid
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actName      String
+  bio          String?
+  category     ArtistCategory
+  city         String
+  country      String         @default("US")
+  region       String?
+  travelScope  TravelScope
+  openToTravel Boolean
+  latitude     Float?
+  longitude    Float?
+  published    Boolean        @default(false)
+  publishedAt  DateTime?
+  spotlight    Boolean        @default(false)
+  /// Stripe Connect account id — Phase 2. Null until connected.
+  stripeAccountId String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  availability AvailabilityDate[]
+  media        MediaAsset[]
+  socialLinks  SocialLink[]
+  inquiries    Inquiry[]
+  quotes       Quote[]
+
+  @@index([city, category, published])
+  @@index([country, city])
+  @@index([travelScope])
+  @@index([latitude, longitude])
+}
+
+model AvailabilityDate {
+  id              String        @id @default(uuid()) @db.Uuid
+  artistProfileId String        @db.Uuid
+  artistProfile   ArtistProfile @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  timezone        String
+  open            Boolean       @default(true)
+  note            String?
+  createdAt       DateTime      @default(now())
+
+  @@unique([artistProfileId, date])
+  @@index([date, open])
+}
+
+model MediaAsset {
+  id                 String        @id @default(uuid()) @db.Uuid
+  ownerId            String        @db.Uuid
+  owner              User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  artistProfileId    String?       @db.Uuid
+  artistProfile      ArtistProfile? @relation(fields: [artistProfileId], references: [id], onDelete: SetNull)
+  kind               MediaKind
+  mimeType           String
+  byteSize           Int
+  originalKey        String
+  previewKey         String?
+  posterKey          String?
+  status             MediaStatus   @default(UPLOADING)
+  watermarkedPreview Boolean       @default(false)
+  isPublicPreview    Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([artistProfileId, status])
+  @@index([ownerId])
+}
+
+model SocialLink {
+  id              String         @id @default(uuid()) @db.Uuid
+  artistProfileId String         @db.Uuid
+  artistProfile   ArtistProfile  @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  platform        SocialPlatform
+  url             String
+  displayName     String?
+  avatarUrl       String?
+  /// Phase 5 OAuth import marker. Manual links leave this null.
+  oauthProvider   String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([artistProfileId])
+}
+
+model Inquiry {
+  id              String        @id @default(uuid()) @db.Uuid
+  artistProfileId String        @db.Uuid
+  artistProfile   ArtistProfile @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  bookerId        String        @db.Uuid
+  booker          User          @relation("BookerInquiries", fields: [bookerId], references: [id], onDelete: Cascade)
+  eventDate       DateTime      @db.Date
+  eventTimezone   String
+  city            String
+  venueName       String?
+  status          InquiryStatus @default(OPEN)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  messages Message[]
+  quotes   Quote[]
+
+  @@index([artistProfileId, status])
+  @@index([bookerId, status])
+}
+
+model Message {
+  id        String   @id @default(uuid()) @db.Uuid
+  inquiryId String   @db.Uuid
+  inquiry   Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  senderId  String   @db.Uuid
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([inquiryId, createdAt])
+}
+
+/// Phase 2+ tables reserved so identity does not reshape later.
+model Quote {
+  id              String        @id @default(uuid()) @db.Uuid
+  inquiryId       String        @db.Uuid
+  inquiry         Inquiry       @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  artistProfileId String        @db.Uuid
+  artistProfile   ArtistProfile @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  artistUserId    String        @db.Uuid
+  artistUser      User          @relation("QuoteArtist", fields: [artistUserId], references: [id], onDelete: Cascade)
+  status          QuoteStatus   @default(DRAFT)
+  totalCents      Int
+  currency        String        @default("USD")
+  depositPercent  Float
+  travelMode      TravelMode
+  travelScope     TravelScope
+  includedScope   String
+  bookingFeeRate  Float
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  acceptedById    String?       @db.Uuid
+  acceptedIp      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  booking   Booking?
+  dealSheet DealSheet?
+
+  @@index([inquiryId])
+}
+
+model Booking {
+  id            String        @id @default(uuid()) @db.Uuid
+  quoteId       String        @unique @db.Uuid
+  quote         Quote         @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  status        BookingStatus @default(PENDING_PAYMENT)
+  payoutStatus  PayoutStatus  @default(PENDING)
+  eventEndsAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  payments  Payment[]
+  incidents Incident[]
+}
+
+model Payment {
+  id              String        @id @default(uuid()) @db.Uuid
+  bookingId       String        @db.Uuid
+  booking         Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  status          PaymentStatus @default(REQUIRES_PAYMENT)
+  amountCents     Int
+  currency        String        @default("USD")
+  stripeIntentId  String?       @unique
+  idempotencyKey  String        @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([bookingId])
+}
+
+model DealSheet {
+  id                 String          @id @default(uuid()) @db.Uuid
+  quoteId            String          @unique @db.Uuid
+  quote              Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  status             DealSheetStatus @default(DRAFT)
+  lockedPayloadJson  Json
+  artistAcceptedAt   DateTime?
+  artistAcceptedById String?         @db.Uuid
+  artistAcceptedIp   String?
+  bookerAcceptedAt   DateTime?
+  bookerAcceptedById String?         @db.Uuid
+  bookerAcceptedIp   String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+}
+
+model Incident {
+  id        String   @id @default(uuid()) @db.Uuid
+  bookingId String   @db.Uuid
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  openedById String  @db.Uuid
+  summary   String
+  open      Boolean  @default(true)
+  resolvedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bookingId, open])
+}
+
+model Report {
+  id           String   @id @default(uuid()) @db.Uuid
+  reporterId   String   @db.Uuid
+  reporter     User     @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType   String
+  targetId     String
+  reason       String
+  createdAt    DateTime @default(now())
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entityType String
+  entityId  String
+  ip        String?
+  metaJson  Json?
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  userId    String?  @db.Uuid
+  metaJson  Json?
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+}

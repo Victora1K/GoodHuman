@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: goodhuman
+          POSTGRES_PASSWORD: goodhuman
+          POSTGRES_DB: goodhuman
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U goodhuman"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    env:
+      DATABASE_URL: postgresql://goodhuman:goodhuman@localhost:5432/goodhuman
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-secret
+      STORAGE_LOCAL_ROOT: ./storage-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm --filter @goodhuman/shared build
+      - run: pnpm --filter @goodhuman/api db:generate
+      - run: pnpm --filter @goodhuman/api exec prisma migrate deploy
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
